@@ -13,6 +13,7 @@ var StartSceneLayer = cc.Layer.extend({
     playButton:null,
     playerNameBox:null,
     playerNameLabel:null,
+    reloginCount:0,
     ctor:function () 
     {
         //////////////////////////////
@@ -25,7 +26,7 @@ var StartSceneLayer = cc.Layer.extend({
     {
     	this._super();
     	
-		// 激活 update
+	  // 激活 update
         this.schedule(this.sceneUpdate, 0.1, cc.REPEAT_FOREVER, 0.1);
     
     	// 初始化UI
@@ -410,8 +411,8 @@ var StartSceneLayer = cc.Layer.extend({
     {
 		// common
 		KBEngine.Event.register("onKicked", this, "onKicked");
-		KBEngine.Event.register("onDisableConnect", this, "onDisableConnect");
-		KBEngine.Event.register("onConnectStatus", this, "onConnectStatus");
+		KBEngine.Event.register("onDisconnected", this, "onDisconnected");
+		KBEngine.Event.register("onConnectionState", this, "onConnectionState");
 	    	
 		// login
 		KBEngine.Event.register("onCreateAccountResult", this, "onCreateAccountResult");
@@ -420,12 +421,14 @@ var StartSceneLayer = cc.Layer.extend({
 		KBEngine.Event.register("onScriptVersionNotMatch", this, "onScriptVersionNotMatch");
 		KBEngine.Event.register("onLoginBaseappFailed", this, "onLoginBaseappFailed");
 		KBEngine.Event.register("onLoginSuccessfully", this, "onLoginSuccessfully");
+		KBEngine.Event.register("onReloginBaseappFailed", this, "onReloginBaseappFailed");
+		KBEngine.Event.register("onReloginBaseappSuccessfully", this, "onReloginBaseappSuccessfully");
 		KBEngine.Event.register("onLoginBaseapp", this, "onLoginBaseapp");
 		KBEngine.Event.register("Loginapp_importClientMessages", this, "Loginapp_importClientMessages");
 		KBEngine.Event.register("Baseapp_importClientMessages", this, "Baseapp_importClientMessages");
 		KBEngine.Event.register("Baseapp_importClientEntityDef", this, "Baseapp_importClientEntityDef");
 		
-		// selavatars
+		// selavatars(register by scripts)
 		KBEngine.Event.register("onReqAvatarList", this, "onReqAvatarList");
 		KBEngine.Event.register("onCreateAvatarResult", this, "onCreateAvatarResult");
 		KBEngine.Event.register("onRemoveAvatar", this, "onRemoveAvatar");
@@ -436,13 +439,50 @@ var StartSceneLayer = cc.Layer.extend({
 		GUIDebugLayer.debug.ERROR_MSG("kick, disconnect!, reason=" + KBEngine.app.serverErr(failedcode));
 	},
 		
-	onDisableConnect : function()
+	onDisconnected : function()
 	{
-		// 切换到场景
-		cc.director.runScene(new StartScene());			
-	},
+		GUIDebugLayer.debug.ERROR_MSG("disconnect! will try to reconnect...");
+		this.reloginCount = 0;
 		
-	onConnectStatus : function(success)
+		this.scheduleOnce(function timerfn() {  
+                this.onReloginBaseappTimer(this);
+          	  }, 1);
+	},
+	
+	onReloginBaseappTimer : function(self)
+	{
+		if(KBEngine.app.socket != undefined && KBEngine.app.socket != null)
+		{
+			return;
+		}
+		
+		if(this.reloginCount >= 3)
+		{
+			// 切换起始到场景
+			cc.director.runScene(new StartScene());
+			return;
+		}
+	
+		this.reloginCount += 1;
+		
+		GUIDebugLayer.debug.ERROR_MSG("will try to reconnect(" + this.reloginCount + ")...");
+		KBEngine.app.reloginBaseapp();
+		this.scheduleOnce(function timerfn() {  
+                self.onReloginBaseappTimer(self);
+          	  }, 1);
+	},
+	
+    onReloginBaseappFailed : function(failedcode)
+    {
+    	GUIDebugLayer.debug.ERROR_MSG("reogin is failed(断线重连失败), err=" + KBEngine.app.serverErr(failedcode));	
+    },
+    	
+    onReloginBaseappSuccessfully : function()
+    {
+	GUIDebugLayer.debug.INFO_MSG("reogin is successfully!(断线重连成功!)");	
+    },
+    	
+	onConnectionState : function(success)
 	{
 		if(!success)
 			GUIDebugLayer.debug.ERROR_MSG("Connect(" + KBEngine.app.ip + ":" + KBEngine.app.port + ") is error! (连接错误)");

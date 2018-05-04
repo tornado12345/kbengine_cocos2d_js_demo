@@ -8,6 +8,7 @@ var WorldSceneLayer = cc.Layer.extend({
     mapNode: null,
     mapName: "",
     relivePanel: null,
+    reloginCount:0,
     ctor:function () {
         //////////////////////////////
         // super init first
@@ -188,17 +189,21 @@ var WorldSceneLayer = cc.Layer.extend({
     {
 		// common
 		KBEngine.Event.register("onKicked", this, "onKicked");
-		KBEngine.Event.register("onDisableConnect", this, "onDisableConnect");
-		KBEngine.Event.register("onConnectStatus", this, "onConnectStatus");
-		
+		KBEngine.Event.register("onDisconnected", this, "onDisconnected");
+		KBEngine.Event.register("onConnectionState", this, "onConnectionState");
+		KBEngine.Event.register("onReloginBaseappFailed", this, "onReloginBaseappFailed");
+		KBEngine.Event.register("onReloginBaseappSuccessfully", this, "onReloginBaseappSuccessfully");
+
 		// in world
 		KBEngine.Event.register("addSpaceGeometryMapping", this, "addSpaceGeometryMapping");
-		KBEngine.Event.register("onAvatarEnterWorld", this, "onAvatarEnterWorld");
 		KBEngine.Event.register("onEnterWorld", this, "onEnterWorld");
 		KBEngine.Event.register("onLeaveWorld", this, "onLeaveWorld");
 		KBEngine.Event.register("set_position", this, "set_position");
 		KBEngine.Event.register("set_direction", this, "set_direction");
 		KBEngine.Event.register("updatePosition", this, "updatePosition");
+		
+		// in world(register by scripts)
+		KBEngine.Event.register("onAvatarEnterWorld", this, "onAvatarEnterWorld");
 		KBEngine.Event.register("set_HP", this, "set_HP");
 		KBEngine.Event.register("set_MP", this, "set_MP");
 		KBEngine.Event.register("set_HP_Max", this, "set_HP_Max");
@@ -217,14 +222,51 @@ var WorldSceneLayer = cc.Layer.extend({
 	onKicked : function(failedcode)
 	{
 	},
-		
-	onDisableConnect : function()
+
+	onDisconnected : function()
 	{
-		// 切换到场景
-		cc.director.runScene(new StartScene());			
-	},
+		GUIDebugLayer.debug.ERROR_MSG("disconnect! will try to reconnect...");
+		this.reloginCount = 0;
 		
-	onConnectStatus : function(success)
+		this.scheduleOnce(function timerfn() {  
+                this.onReloginBaseappTimer(this);
+          	  }, 1);
+	},
+	
+	onReloginBaseappTimer : function(self)
+	{
+		if(KBEngine.app.socket != undefined && KBEngine.app.socket != null)
+		{
+			return;
+		}
+		
+		if(this.reloginCount >= 3)
+		{
+			// 切换起始到场景
+			cc.director.runScene(new StartScene());
+			return;
+		}
+	
+		this.reloginCount += 1;
+		
+		GUIDebugLayer.debug.ERROR_MSG("will try to reconnect(" + this.reloginCount + ")...");
+		KBEngine.app.reloginBaseapp();
+		this.scheduleOnce(function timerfn() {  
+                self.onReloginBaseappTimer(self);
+          	  }, 1);
+	},
+	
+    onReloginBaseappFailed : function(failedcode)
+    {
+    	GUIDebugLayer.debug.ERROR_MSG("reogin is failed(断线重连失败), err=" + KBEngine.app.serverErr(failedcode));	
+    },
+    	
+    onReloginBaseappSuccessfully : function()
+    {
+	GUIDebugLayer.debug.INFO_MSG("reogin is successfully!(断线重连成功!)");	
+    },
+		
+	onConnectionState : function(success)
 	{
 		if(!success)
 			GUIDebugLayer.debug.ERROR_MSG("Connect(" + KBEngine.app.ip + ":" + KBEngine.app.port + ") is error! (连接错误)");
@@ -311,6 +353,9 @@ var WorldSceneLayer = cc.Layer.extend({
 		
 		ae.x = entity.position.x * 16;
 		ae.y = entity.position.z * 16;
+		
+		if(entity.isPlayer())
+			ae.stopAllActions();
 	},
 
 	updatePosition : function(entity)
